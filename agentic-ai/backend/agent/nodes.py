@@ -1,12 +1,12 @@
 import json
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_core.messages import AIMessage, ToolMessage
 from agent.state import AgentState
 from agent.tools import web_search, run_python, read_memory, write_memory, list_memory, save_to_file, read_file
 from memory import mongo
 
 # LLM and tools
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 tools_list = [web_search, run_python, read_memory, write_memory, list_memory, save_to_file, read_file]
 llm_with_tools = llm.bind_tools(tools_list)
 
@@ -15,7 +15,7 @@ You solve tasks step by step using tools.
 
 Available tools:
 - web_search(query) - search the web for current information
-- run_python(code) - execute Python code and return output
+- run_python(code) - run sandboxed Python for calculations only
 - read_memory(key, user_email) - retrieve a stored memory value
 - write_memory(key, value, user_email) - save a value to persistent memory
 - list_memory(user_email) - list all stored memory keys and values
@@ -27,8 +27,10 @@ Strategy:
 2. Use read_memory for specific keys you remember
 3. Use web_search when you need current or new information
 4. Use write_memory to save important findings for future sessions
-5. Use run_python for calculations, data processing, or structured output
+5. Use run_python only for pure calculations or in-memory data processing. Never use it for file creation, file reads/writes, shell commands, operating system calls, package installs, networking, or imports.
 6. Only give your final answer when you have sufficient information
+
+Use save_to_file and read_file for file operations. Call tools with minimal, valid arguments and do not repeat the same tool call unless the previous result requires it.
 
 Be concise in reasoning, thorough in final answers."""
 
@@ -146,7 +148,7 @@ async def memory_node(state: AgentState) -> AgentState:
             
     return {"messages": messages, "steps": steps}
 
-evaluator_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+evaluator_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
 async def end_node(state: AgentState) -> AgentState:
     final_answer = state.get("final_answer", "")
