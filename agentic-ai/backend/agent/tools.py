@@ -1,13 +1,96 @@
+import ast
 from langchain.tools import tool
-from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_tavily import TavilySearch
 from langchain_experimental.tools.python.tool import PythonREPLTool
 from memory import mongo
+
+
+BLOCKED_PYTHON_NAMES = {
+    "__import__",
+    "compile",
+    "eval",
+    "exec",
+    "globals",
+    "input",
+    "locals",
+    "open",
+}
+
+BLOCKED_PYTHON_MODULES = {
+    "builtins",
+    "ctypes",
+    "glob",
+    "importlib",
+    "io",
+    "os",
+    "pathlib",
+    "pickle",
+    "shutil",
+    "socket",
+    "subprocess",
+    "sys",
+    "tempfile",
+}
+
+BLOCKED_PYTHON_ATTRS = {
+    "chmod",
+    "copy",
+    "copyfile",
+    "copytree",
+    "dump",
+    "dumps",
+    "load",
+    "loads",
+    "mkdir",
+    "move",
+    "open",
+    "popen",
+    "remove",
+    "removedirs",
+    "rename",
+    "replace",
+    "rmdir",
+    "rmtree",
+    "run",
+    "spawn",
+    "startfile",
+    "system",
+    "unlink",
+}
+
+
+def _validate_python_code(code: str) -> str | None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return f"Invalid Python syntax: {e}"
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            imported_modules = []
+            if isinstance(node, ast.Import):
+                imported_modules = [alias.name.split(".")[0] for alias in node.names]
+            elif node.module:
+                imported_modules = [node.module.split(".")[0]]
+
+            blocked = sorted(set(imported_modules) & BLOCKED_PYTHON_MODULES)
+            if blocked:
+                return f"Blocked Python import: {', '.join(blocked)}"
+
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name) and func.id in BLOCKED_PYTHON_NAMES:
+                return f"Blocked Python call: {func.id}"
+            if isinstance(func, ast.Attribute) and func.attr in BLOCKED_PYTHON_ATTRS:
+                return f"Blocked Python call: {func.attr}"
+
+    return None
 
 @tool
 def web_search(query: str) -> str:
     """Search the web for current information."""
     try:
-        search = TavilySearchResults(max_results=3)
+        search = TavilySearch(max_results=3)
         results = search.invoke({"query": query})
         return str(results)
     except Exception as e:
@@ -15,8 +98,12 @@ def web_search(query: str) -> str:
 
 @tool
 def run_python(code: str) -> str:
-    """Execute Python code and return output."""
+    """Run sandboxed Python for calculations only. Do not use for shell commands, files, networking, imports, or OS operations."""
     try:
+        validation_error = _validate_python_code(code)
+        if validation_error:
+            return f"Error executing Python code: {validation_error}. Use the dedicated file or web tools instead when appropriate."
+
         repl = PythonREPLTool()
         output = repl.invoke(code)
         return output
@@ -42,8 +129,6 @@ async def list_memory(user_email: str) -> str:
     if not memories:
         return "No memories found."
     return str([{"key": m["key"], "value": m["value"]} for m in memories])
-
-import os
 
 @tool
 def save_to_file(filename: str, content: str, user_email: str = "") -> str:

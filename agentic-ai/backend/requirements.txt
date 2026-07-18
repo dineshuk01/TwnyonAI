@@ -13,3 +13,5 @@ langchain-experimental
 python-multipart
 passlib
 bcrypt
+redis
+langchain-groq

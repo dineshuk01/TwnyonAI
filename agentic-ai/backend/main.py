@@ -80,7 +80,7 @@ async def run_agent(request: RunRequest):
                         
             # If the graph finished but evaluation wasn't explicitly yielded:
             # We can fetch the latest state
-            latest_state = agent_graph.get_state(config).values
+            latest_state = (await agent_graph.aget_state(config)).values
             if "evaluation" in latest_state and "final_answer" in latest_state:
                 final_event = {
                     "type": "final",
@@ -119,10 +119,10 @@ class TitleRequest(BaseModel):
 @app.post("/api/generate-title")
 async def generate_title(request: TitleRequest):
     try:
-        from langchain_openai import ChatOpenAI
+        from langchain_groq import ChatGroq
         from langchain_core.messages import SystemMessage, HumanMessage
         
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+        llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.7)
         prompt = (
             "You are a helpful assistant. Generate a short, concise, and professional title "
             "(maximum of 3 to 4 words) that summarizes the user's message/request. "
