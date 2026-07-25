@@ -23,16 +23,14 @@ Available tools:
 - read_file(filename) - read content from a local file
 
 Strategy:
-1. Always call list_memory first to check what you already know
-2. Use read_memory for specific keys you remember
-3. Use web_search when you need current or new information
-4. Use write_memory to save important findings for future sessions
-5. Use run_python only for pure calculations or in-memory data processing. Never use it for file creation, file reads/writes, shell commands, operating system calls, package installs, networking, or imports.
-6. Only give your final answer when you have sufficient information
+1. For casual greetings, small talk, or general questions, respond directly and conversationally without calling any tools.
+2. Call list_memory or read_memory only when the user's prompt relates to memory, previous context, or stored preferences.
+3. Use web_search when you need current or external information.
+4. Use write_memory to store or update user preferences, interaction timestamps, facts, or findings for future sessions.
+5. Use run_python only for pure calculations or data processing. Never use it for file/OS/shell tasks.
+6. Give a friendly, natural, and helpful response.
 
-Use save_to_file and read_file for file operations. Call tools with minimal, valid arguments and do not repeat the same tool call unless the previous result requires it.
-
-Be concise in reasoning, thorough in final answers."""
+Use save_to_file and read_file for file operations. Call tools only when necessary."""
 
 async def orchestrator_node(state: AgentState) -> AgentState:
     messages = state.get("messages", [])
@@ -42,22 +40,19 @@ async def orchestrator_node(state: AgentState) -> AgentState:
         dynamic_prompt = SYSTEM_PROMPT + f"\n\nIMPORTANT: The current user's email is '{user_email}'. You MUST use this email when calling memory tools."
         messages = [SystemMessage(content=dynamic_prompt)] + messages
         
-    # Bulletproof fix: Scan for hanging tool calls in history and inject dummy ToolMessages
-    # so OpenAI doesn't crash with 400 if the state got corrupted from a previous error.
-    from langchain_core.messages import ToolMessage, AIMessage
+    # Scan for hanging tool calls in history and inject dummy ToolMessages if needed
     scrubbed_messages = []
     for i, msg in enumerate(messages):
         scrubbed_messages.append(msg)
         if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
             for tc in msg.tool_calls:
-                # Look ahead to see if there is a ToolMessage with this id
                 found = False
                 for j in range(i+1, len(messages)):
                     if isinstance(messages[j], ToolMessage) and messages[j].tool_call_id == tc["id"]:
                         found = True
                         break
                     if isinstance(messages[j], AIMessage):
-                        break # Stop looking if we hit the next AI message
+                        break
                 if not found:
                     scrubbed_messages.append(ToolMessage(content="Error: Tool execution crashed or was interrupted.", tool_call_id=tc["id"], name=tc["name"]))
     
@@ -189,17 +184,6 @@ def should_continue(state: AgentState) -> str:
         elif has_normal and not has_memory:
             return "tools"
         else:
-            # If mixed, send to tools first (they will only handle their own, then what?
-            # Actually, standard tool_node and memory_node as defined above would skip the others. 
-            # We should probably combine them or allow routing to both.
-            # To keep it simple, we can just route to "tools" and let it handle all tools if we merge them, 
-            # but the spec asks for separate nodes.
-            # Let's route to memory if ANY memory tool is present. The nodes are simple filters.
-            # But the graph only allows one route unless we use parallel execution.
-            # Let's return "memory" if ANY memory tool, then "tools" will handle normal ones.
-            # Actually the spec says:
-            # If last message has tool_calls -> return "tools"
-            # If last message has memory tool calls -> return "memory"
             return "memory" if has_memory else "tools"
             
     return "orchestrator"
