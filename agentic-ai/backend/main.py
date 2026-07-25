@@ -48,8 +48,18 @@ class RunRequest(BaseModel):
     session_id: str
     user_email: str
 
+from datetime import datetime
+
 @app.post("/run")
 async def run_agent(request: RunRequest):
+    # Automatically update last_interaction timestamp in memory on every interaction
+    if request.user_email:
+        current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            await mongo.write_memory("last_interaction", current_time, request.user_email)
+        except Exception as e:
+            print(f"Error updating last_interaction memory: {e}")
+
     async def event_generator():
         initial_state = {
             "messages": [HumanMessage(content=request.goal)],
