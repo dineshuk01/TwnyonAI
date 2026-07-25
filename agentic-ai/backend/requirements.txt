@@ -8,6 +8,7 @@ motor
 pymongo
 python-dotenv
 tavily-python
+langchain-tavily
 sse-starlette
 langchain-experimental
 python-multipart
